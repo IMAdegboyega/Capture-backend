@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import time
 
@@ -101,16 +102,16 @@ class CloudinaryService:
 
     async def delete_video(self, public_id: str):
         """Delete a video from Cloudinary by its public_id."""
-        cloudinary.uploader.destroy(public_id, resource_type="video")
+        await asyncio.to_thread(cloudinary.uploader.destroy, public_id, resource_type="video")
 
     async def delete_image(self, public_id: str):
         """Delete a thumbnail/image from Cloudinary by its public_id."""
-        cloudinary.uploader.destroy(public_id, resource_type="image")
+        await asyncio.to_thread(cloudinary.uploader.destroy, public_id, resource_type="image")
 
     async def get_processing_status(self, public_id: str) -> dict:
         """Check if a video has been processed/is ready for playback."""
         try:
-            result = cloudinary.api.resource(public_id, resource_type="video")
+            result = await asyncio.to_thread(cloudinary.api.resource, public_id, resource_type="video")
             status = result.get("status", "unknown")
             return {
                 "is_processed": status == "active",

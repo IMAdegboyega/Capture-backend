@@ -11,8 +11,8 @@ __pycache__/
 *.pyo
 
 # Alembic
-migrations/versions/*.py
-!migrations/versions/.gitkeep
+# Migration version files are intentionally committed so Render can run them
+!migrations/versions/*.py
 
 # IDE
 .vscode/

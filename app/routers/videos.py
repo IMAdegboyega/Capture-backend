@@ -158,6 +158,46 @@ async def get_all_videos(
     )
 
 
+# ─── User videos ─────────────────────────────────────────────────────────────────
+# IMPORTANT: must be registered before /{video_id:path} or it will be shadowed.
+
+@router.get("/user/{user_id}", response_model=UserWithVideosResponse)
+async def get_user_videos(
+    user_id: str,
+    query: str = "",
+    filter: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_user),
+):
+    user_result = await db.execute(select(User).where(User.id == user_id))
+    user = user_result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    is_owner = current_user and current_user.id == user_id
+
+    conditions = [Video.user_id == user_id]
+    if not is_owner:
+        conditions.append(Video.visibility == "public")
+    if query.strip():
+        conditions.append(Video.title.ilike(f"%{query}%"))
+
+    stmt = (
+        select(Video, User)
+        .outerjoin(User, Video.user_id == User.id)
+        .where(and_(*conditions))
+        .order_by(_order_clause(filter))
+    )
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    return UserWithVideosResponse(
+        user=UserOut.model_validate(user),
+        videos=[_video_with_user(v, u) for v, u in rows],
+        count=len(rows),
+    )
+
+
 # ─── Single video ───────────────────────────────────────────────────────────────
 
 @router.get("/{video_id:path}", response_model=VideoWithUser)
@@ -252,42 +292,3 @@ async def delete_video(
 
     # Delete from DB
     await db.delete(video)
-
-
-# ─── User videos ────────────────────────────────────────────────────────────────
-
-@router.get("/user/{user_id}", response_model=UserWithVideosResponse)
-async def get_user_videos(
-    user_id: str,
-    query: str = "",
-    filter: str | None = None,
-    db: AsyncSession = Depends(get_db),
-    current_user: User | None = Depends(get_optional_user),
-):
-    user_result = await db.execute(select(User).where(User.id == user_id))
-    user = user_result.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    is_owner = current_user and current_user.id == user_id
-
-    conditions = [Video.user_id == user_id]
-    if not is_owner:
-        conditions.append(Video.visibility == "public")
-    if query.strip():
-        conditions.append(Video.title.ilike(f"%{query}%"))
-
-    stmt = (
-        select(Video, User)
-        .outerjoin(User, Video.user_id == User.id)
-        .where(and_(*conditions))
-        .order_by(_order_clause(filter))
-    )
-    result = await db.execute(stmt)
-    rows = result.all()
-
-    return UserWithVideosResponse(
-        user=UserOut.model_validate(user),
-        videos=[_video_with_user(v, u) for v, u in rows],
-        count=len(rows),
-    )

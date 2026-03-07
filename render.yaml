@@ -1,0 +1,51 @@
+services:
+  - type: web
+    name: capture-backend
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      # ── Non-secret config ─────────────────────────────────────────────────────
+      - key: DEBUG
+        value: false
+      - key: ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: 1440
+      - key: REFRESH_TOKEN_EXPIRE_DAYS
+        value: 30
+
+      # ── Secrets: set these manually in the Render dashboard ──────────────────
+      # Render will auto-generate a secure value for SECRET_KEY on first deploy
+      - key: SECRET_KEY
+        generateValue: true
+
+      # Your Supabase async connection string:
+      # postgresql+asyncpg://user:password@host:5432/postgres
+      - key: DATABASE_URL
+        sync: false
+
+      # Comma-free JSON list of allowed frontend origins, e.g.:
+      # ["https://your-app.vercel.app"]
+      - key: ALLOWED_ORIGINS
+        sync: false
+
+      # Google OAuth — must match what's in Google Cloud Console
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      # Set to your production frontend URL + /api/auth/callback/google
+      - key: GOOGLE_REDIRECT_URI
+        sync: false
+
+      # Cloudinary
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
