@@ -1,5 +1,11 @@
 import asyncio
+import os
+import sys
 from logging.config import fileConfig
+
+# Ensure the project root (parent of migrations/) is on sys.path so that
+# 'app' is importable regardless of how alembic is invoked (e.g. on Render).
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from alembic import context
 from sqlalchemy import pool
