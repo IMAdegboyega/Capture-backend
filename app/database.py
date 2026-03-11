@@ -4,8 +4,10 @@ from app.config import get_settings
 
 settings = get_settings()
 
+_db_url = settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+
 engine = create_async_engine(
-    settings.DATABASE_URL,
+    _db_url,
     echo=settings.DEBUG,
     pool_size=20,
     max_overflow=10,
