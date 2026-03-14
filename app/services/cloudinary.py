@@ -33,15 +33,12 @@ class CloudinaryService:
     def generate_upload_signature(self, params_to_sign: dict) -> dict:
         """
         Generate a signed upload payload for direct client-side uploads.
-        The client will POST to https://api.cloudinary.com/v1_1/{cloud}/video/upload
+        The client will POST to https://api.cloudinary.com/v1_1/{cloud}/{resource_type}/upload
         """
-        timestamp = int(time.time())
-        params = {
-            **params_to_sign,
-            "timestamp": timestamp,
-        }
+        timestamp = params_to_sign.get("timestamp", int(time.time()))
+        params = {**params_to_sign, "timestamp": timestamp}
 
-        # Build the string to sign (sorted params, excluding file & api_key)
+        # Build the string to sign: sorted key=value pairs joined with &, then append api_secret
         sorted_params = "&".join(
             f"{k}={v}" for k, v in sorted(params.items()) if v is not None
         )
@@ -58,12 +55,10 @@ class CloudinaryService:
     def get_video_upload_params(self, folder: str = "capture/videos") -> dict:
         """
         Return everything the client needs to upload a video directly to Cloudinary.
-        Enables auto_transcription for AI-generated captions.
         """
         params_to_sign = {
             "folder": folder,
-            "resource_type": "video",
-            "auto_transcription": "true",
+            "timestamp": int(time.time()),
         }
 
         sign_data = self.generate_upload_signature(params_to_sign)
@@ -75,8 +70,6 @@ class CloudinaryService:
             "api_key": sign_data["api_key"],
             "cloud_name": sign_data["cloud_name"],
             "folder": folder,
-            "resource_type": "video",
-            "auto_transcription": "true",
         }
 
     def get_thumbnail_upload_params(self, folder: str = "capture/thumbnails") -> dict:
@@ -85,6 +78,7 @@ class CloudinaryService:
         """
         params_to_sign = {
             "folder": folder,
+            "timestamp": int(time.time()),
         }
 
         sign_data = self.generate_upload_signature(params_to_sign)
