@@ -1,111 +1,92 @@
-# Capture API — FastAPI Backend
+# Capture API
 
-Custom Python backend for the Capture screen recording & video sharing platform.  
-Replaces the original Next.js server actions with a standalone REST API.
+REST API backend for the Capture screen recording and video sharing platform. Handles Google OAuth authentication, JWT token management, video metadata persistence, and signed Cloudinary upload flows.
 
 ## Tech Stack
 
 - **FastAPI** — async Python web framework
-- **SQLAlchemy 2.0** — async ORM with asyncpg driver
-- **Alembic** — database migrations
-- **python-jose** — JWT authentication
-- **httpx** — async HTTP client for Bunny.net APIs
-- **slowapi** — rate limiting
-- **Pydantic v2** — request/response validation
+- **SQLAlchemy 2.0 (async)** — ORM with `asyncpg` driver for PostgreSQL
+- **PostgreSQL** — hosted on Supabase, accessed via the Transaction pooler
+- **Cloudinary SDK** — video/thumbnail storage, processing status, transcript retrieval
+- **JWT (python-jose)** — stateless access + refresh token auth
+- **slowapi** — rate limiting on mutation endpoints
+- **Pydantic v2** — request/response validation with field-level constraints
 
-## Project Structure
+## Architecture
 
-```
-capture-backend/
-├── app/
-│   ├── main.py              # FastAPI app entry point
-│   ├── config.py            # Environment settings (pydantic-settings)
-│   ├── database.py          # Async SQLAlchemy session
-│   ├── models.py            # SQLAlchemy ORM models
-│   ├── schemas.py           # Pydantic request/response schemas
-│   ├── routers/
-│   │   ├── auth.py          # Google OAuth + JWT endpoints
-│   │   └── videos.py        # Video CRUD, search, pagination
-│   ├── services/
-│   │   ├── auth.py          # Token creation, Google OAuth, user mgmt
-│   │   └── bunny.py         # Bunny.net Stream/Storage/CDN service
-│   └── middleware/
-│       └── rate_limit.py    # slowapi rate limiter
-├── migrations/              # Alembic migrations
-├── requirements.txt
-├── alembic.ini
-└── .env.example
-```
+- **Service layer**: `CloudinaryService` wraps all Cloudinary SDK calls with `asyncio.to_thread()` for non-blocking execution. Auth logic (token creation, Google OAuth exchange, user upsert) lives in `app/services/auth.py`.
+- **Async DB**: `AsyncSession` via `asyncpg` with `statement_cache_size=0` required for Supabase Transaction pooler compatibility.
+- **Signed upload flow**: The frontend requests signed upload parameters from `/api/videos/upload-url`, uploads directly to Cloudinary client-side, then POSTs metadata to `/api/videos`. The backend never handles the video file itself.
+- **Security**: `SecurityHeadersMiddleware` sets `X-Content-Type-Options`, `X-Frame-Options`, `Strict-Transport-Security`, and related headers on every response.
 
 ## Setup
 
 ```bash
-# 1. Clone & enter
-cd capture-backend
-
-# 2. Create virtual environment
+# Create virtual environment
 python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# venv\Scripts\activate   # Windows
+source venv/bin/activate   # Windows: venv\Scripts\activate
 
-# 3. Install dependencies
+# Install dependencies
 pip install -r requirements.txt
 
-# 4. Configure environment
+# Configure environment — copy and fill in values
 cp .env.example .env
-# Edit .env with your actual credentials
+```
 
-# 5. Run migrations (if connecting to a fresh DB)
-alembic revision --autogenerate -m "initial"
+### Environment Variables
+
+```env
+DATABASE_URL=postgresql+asyncpg://user:password@host:5432/dbname
+SECRET_KEY=your_secret_key
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+GOOGLE_REDIRECT_URI=http://localhost:3000/api/auth/callback/google
+CLOUDINARY_CLOUD_NAME=your_cloud_name
+CLOUDINARY_API_KEY=your_api_key
+CLOUDINARY_API_SECRET=your_api_secret
+ALLOWED_ORIGINS=http://localhost:3000
+```
+
+### Run Migrations & Start Server
+
+```bash
 alembic upgrade head
-
-# 6. Start the server
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 ## API Endpoints
 
 ### Auth
-| Method | Endpoint             | Description                          | Auth |
-|--------|----------------------|--------------------------------------|------|
-| POST   | `/api/auth/google`   | Exchange Google auth code for JWT    | No   |
-| POST   | `/api/auth/refresh`  | Refresh access token                 | No   |
-| GET    | `/api/auth/me`       | Get current user profile             | Yes  |
+| Method | Endpoint             | Description                       | Auth |
+|--------|----------------------|-----------------------------------|------|
+| POST   | `/api/auth/google`   | Exchange Google auth code for JWT | No   |
+| POST   | `/api/auth/refresh`  | Refresh access token              | No   |
+| GET    | `/api/auth/me`       | Get current user profile          | Yes  |
 
 ### Videos
-| Method | Endpoint                         | Description                        | Auth     |
-|--------|----------------------------------|------------------------------------|----------|
-| GET    | `/api/videos`                    | List/search videos (paginated)     | Optional |
-| POST   | `/api/videos`                    | Save video details to DB           | Yes      |
-| GET    | `/api/videos/{video_id}`         | Get single video                   | No       |
-| DELETE | `/api/videos/{video_id}`         | Delete video (Bunny + DB)          | Yes      |
-| PATCH  | `/api/videos/{video_id}/views`   | Increment view count               | No       |
-| PATCH  | `/api/videos/{video_id}/visibility` | Toggle public/private           | Yes      |
-| GET    | `/api/videos/{video_id}/transcript` | Get AI transcript              | No       |
-| GET    | `/api/videos/{video_id}/status`  | Check encoding progress            | Yes      |
-| POST   | `/api/videos/upload-url`         | Get Bunny upload URL               | Yes      |
-| POST   | `/api/videos/thumbnail-url`      | Get thumbnail upload URL           | Yes      |
-| GET    | `/api/videos/user/{user_id}`     | Get all videos for a user          | Optional |
+| Method | Endpoint                            | Description                          | Auth     |
+|--------|-------------------------------------|--------------------------------------|----------|
+| GET    | `/api/videos`                       | List/search videos (paginated)       | Optional |
+| POST   | `/api/videos`                       | Save video metadata after upload     | Yes      |
+| GET    | `/api/videos/{video_id}`            | Get single video with user info      | No       |
+| DELETE | `/api/videos/{video_id}`            | Delete video (Cloudinary + DB)       | Yes      |
+| PATCH  | `/api/videos/{video_id}/views`      | Increment view count                 | No       |
+| PATCH  | `/api/videos/{video_id}/visibility` | Toggle public/private                | Yes      |
+| GET    | `/api/videos/{video_id}/transcript` | Get AI-generated transcript          | No       |
+| GET    | `/api/videos/{video_id}/status`     | Check Cloudinary encoding progress   | Yes      |
+| POST   | `/api/videos/upload-url`            | Get signed Cloudinary upload params  | Yes      |
+| POST   | `/api/videos/thumbnail-url`         | Get signed thumbnail upload params   | Yes      |
+| GET    | `/api/videos/user/{user_id}`        | Get all videos for a user            | Optional |
 
 ### Utility
-| Method | Endpoint        | Description  |
-|--------|-----------------|--------------|
-| GET    | `/api/health`   | Health check |
+| Method | Endpoint      | Description  |
+|--------|---------------|--------------|
+| GET    | `/api/health` | Health check |
 
-## Query Parameters
+## Testing
 
-**GET /api/videos**
-- `query` — search term (fuzzy title match)
-- `filter` — sort: `Most Viewed`, `Least Viewed`, `Oldest First`, `Most Recent`
-- `page` — page number (default: 1)
-- `page_size` — items per page (default: 8, max: 50)
+```bash
+pytest
+```
 
-**GET /api/videos/user/{user_id}**
-- `query` — search term
-- `filter` — sort order
-
-## Notes
-
-- The database schema is fully compatible with the existing Drizzle/Xata tables — no migration needed if connecting to the same DB.
-- For Xata specifically, swap the DATABASE_URL driver from `postgresql+asyncpg://` to point at your Xata Postgres endpoint.
-- Video/thumbnail file uploads still happen client-side directly to Bunny.net — the backend only provides the signed URLs and persists metadata.
+Tests use `httpx.AsyncClient` with `ASGITransport` — no running server required. The test suite covers auth endpoints, video CRUD authorization, and the health check.

@@ -287,8 +287,11 @@ async def delete_video(
     if video.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized")
 
-    # Delete video from Cloudinary
-    await cloudinary_service.delete_video(video_id)
+    # Attempt Cloudinary cleanup — don't block DB deletion if it fails
+    try:
+        await cloudinary_service.delete_video(video_id)
+    except Exception:
+        pass  # Orphaned Cloudinary asset is acceptable; DB row must go
 
-    # Delete from DB
+    # Always delete from DB
     await db.delete(video)

@@ -13,3 +13,5 @@ slowapi==0.1.9
 authlib==1.6.0
 itsdangerous==2.2.0
 cloudinary==1.41.0
+pytest==8.3.5
+pytest-asyncio==0.25.3

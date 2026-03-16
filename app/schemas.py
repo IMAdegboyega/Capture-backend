@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 # ─── Auth ───────────────────────────────────────────────────────────────────────
@@ -55,14 +55,21 @@ class ThumbnailUploadUrlResponse(BaseModel):
 
 
 class SaveVideoRequest(BaseModel):
-    video_id: str = Field(..., alias="videoId")
-    title: str
-    description: str
+    video_id: str = Field(..., alias="videoId", min_length=1)
+    title: str = Field(..., min_length=1, max_length=200)
+    description: str = Field(..., min_length=1, max_length=5000)
     thumbnail_url: str = Field(..., alias="thumbnailUrl")
-    visibility: str = "public"
+    visibility: str = Field(default="public", pattern=r"^(public|private)$")
     duration: int | None = None
 
     model_config = {"populate_by_name": True}
+
+    @field_validator("video_id", mode="before")
+    @classmethod
+    def video_id_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("video_id must not be empty")
+        return v
 
 
 class VideoOut(BaseModel):
@@ -100,7 +107,7 @@ class VideoListResponse(BaseModel):
 
 
 class UpdateVisibilityRequest(BaseModel):
-    visibility: str
+    visibility: str = Field(..., pattern=r"^(public|private)$")
 
 
 class VideoProcessingStatus(BaseModel):
