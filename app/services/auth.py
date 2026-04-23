@@ -1,6 +1,9 @@
+import base64
+import hashlib
 import uuid
 from datetime import datetime, timedelta, timezone
 
+import bcrypt
 import httpx
 from jose import JWTError, jwt
 from fastapi import Depends, HTTPException, status
@@ -15,8 +18,64 @@ from app.models import Account, Session, User
 settings = get_settings()
 security = HTTPBearer(auto_error=False)
 
+# How long a "video unlock" token stays valid after the viewer enters the password.
+VIDEO_UNLOCK_MINUTES = 60 * 12  # 12 hours
+
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
+
+
+# ─── Password helpers (used for video passwords) ─────────────────────────────
+#
+# We use bcrypt directly (not passlib) because passlib 1.7.4 has a broken
+# version-detection path with bcrypt >= 4.1 — it can throw
+# "password cannot be longer than 72 bytes" for *any* input on newer bcrypt.
+#
+# bcrypt's own 72-byte input cap is sidestepped by pre-hashing with sha256
+# and base64-encoding — this is the same construction as passlib's
+# `bcrypt_sha256` scheme, and lets us accept passwords of any length.
+
+def _prepare(plain: str) -> bytes:
+    digest = hashlib.sha256(plain.encode("utf-8")).digest()
+    return base64.b64encode(digest)  # 44 bytes, well under 72
+
+
+def hash_password(plain: str) -> str:
+    return bcrypt.hashpw(_prepare(plain), bcrypt.gensalt()).decode("utf-8")
+
+
+def verify_password(plain: str, hashed: str) -> bool:
+    try:
+        return bcrypt.checkpw(_prepare(plain), hashed.encode("utf-8"))
+    except Exception:
+        return False
+
+
+# ─── Video unlock tokens (short JWTs tying a viewer to a specific video) ──────
+
+def create_video_unlock_token(video_id: str) -> tuple[str, int]:
+    """
+    Issued when a viewer correctly enters a video's password.
+    Returns (token, expires_in_seconds).
+    """
+    expires_in = VIDEO_UNLOCK_MINUTES * 60
+    expire = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+    payload = {"video_id": video_id, "exp": expire, "type": "video_unlock"}
+    token = jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    return token, expires_in
+
+
+def verify_video_unlock_token(token: str | None, video_id: str) -> bool:
+    if not token:
+        return False
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    except JWTError:
+        return False
+    return (
+        payload.get("type") == "video_unlock"
+        and payload.get("video_id") == video_id
+    )
 
 
 # ─── Token creation ──────────────────────────────────────────────────────────

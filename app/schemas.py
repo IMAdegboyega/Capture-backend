@@ -83,6 +83,10 @@ class VideoOut(BaseModel):
     user_id: str
     views: int
     duration: int | None = None
+    password_protected: bool = False
+    embed_enabled: bool = True
+    processing_status: str = "ready"
+    processing_progress: int = 100
     created_at: datetime
     updated_at: datetime
 
@@ -92,6 +96,60 @@ class VideoOut(BaseModel):
 class VideoWithUser(BaseModel):
     video: VideoOut
     user: UserBrief | None = None
+    # When the video has a password and the request hasn't unlocked it,
+    # the API strips sensitive URLs and sets this flag.
+    locked: bool = False
+
+
+class SetVideoPasswordRequest(BaseModel):
+    # Empty string / None clears the password
+    password: str | None = Field(default=None, max_length=200)
+
+
+class VerifyVideoPasswordRequest(BaseModel):
+    password: str = Field(..., min_length=1, max_length=200)
+
+
+class VerifyVideoPasswordResponse(BaseModel):
+    unlock_token: str
+    expires_in: int
+
+
+class EmbedSettingsRequest(BaseModel):
+    embed_enabled: bool
+
+
+class EmbedCodeResponse(BaseModel):
+    iframe_html: str
+    embed_url: str
+
+
+class CommentCreate(BaseModel):
+    body: str = Field(..., min_length=1, max_length=2000)
+    timestamp_seconds: int | None = Field(default=None, ge=0, le=60 * 60 * 24)
+
+
+class CommentUser(BaseModel):
+    id: str
+    name: str | None = None
+    image: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class CommentOut(BaseModel):
+    id: UUID
+    body: str
+    timestamp_seconds: int | None = None
+    created_at: datetime
+    user: CommentUser | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class CommentListResponse(BaseModel):
+    comments: list[CommentOut]
+    count: int
 
 
 class PaginationMeta(BaseModel):

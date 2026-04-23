@@ -107,12 +107,27 @@ class CloudinaryService:
         try:
             result = await asyncio.to_thread(cloudinary.api.resource, public_id, resource_type="video")
             status = result.get("status", "unknown")
+            print(
+                f"[cloudinary.get_processing_status] public_id={public_id!r} "
+                f"status={status!r} bytes={result.get('bytes')} "
+                f"duration={result.get('duration')}"
+            )
+            # Cloudinary marks plain uploads as "active" once they exist. Some
+            # accounts/pipelines report "complete" or the field may be absent
+            # entirely — in that case the mere fact that .resource() succeeded
+            # is enough to consider the asset playable.
+            is_ready = status in {"active", "complete", "unknown"}
             return {
-                "is_processed": status == "active",
-                "encoding_progress": 100 if status == "active" else 0,
-                "status": 4 if status == "active" else 0,
+                "is_processed": is_ready,
+                "encoding_progress": 100 if is_ready else 0,
+                "status": 4 if is_ready else 0,
             }
-        except Exception:
+        except Exception as e:
+            # Don't swallow silently — this was masking stuck-processing bugs.
+            print(
+                f"[cloudinary.get_processing_status] ERROR for "
+                f"public_id={public_id!r}: {type(e).__name__}: {e}"
+            )
             return {
                 "is_processed": False,
                 "encoding_progress": 0,
@@ -133,6 +148,30 @@ class CloudinaryService:
             if resp.status_code == 200:
                 return resp.text
         return ""
+
+    # ── Webhooks ────────────────────────────────────────────────────────────
+
+    def verify_notification_signature(
+        self, body: str, timestamp: str, signature: str
+    ) -> bool:
+        """
+        Cloudinary signs webhook notifications as:
+            sha1(body + timestamp + api_secret)
+        sent via the X-Cld-Signature / X-Cld-Timestamp headers.
+        Returns True if the signature matches.
+        See https://cloudinary.com/documentation/notifications#verifying_notification_signatures
+        """
+        if not signature or not timestamp:
+            return False
+        to_sign = f"{body}{timestamp}{self.api_secret}"
+        expected = hashlib.sha1(to_sign.encode("utf-8")).hexdigest()
+        # Constant-time compare
+        if len(expected) != len(signature):
+            return False
+        result = 0
+        for a, b in zip(expected, signature):
+            result |= ord(a) ^ ord(b)
+        return result == 0
 
     # ── URL builders ────────────────────────────────────────────────────────
 

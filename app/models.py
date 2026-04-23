@@ -101,7 +101,53 @@ class Video(Base):
     user_id = Column(String, ForeignKey("user.id", ondelete="CASCADE"), nullable=False)
     views = Column(Integer, nullable=False, default=0)
     duration = Column(Integer, nullable=True)
+    # Password protection — when set, viewers must POST the password to unlock
+    password_hash = Column(String, nullable=True)
+    # Whether embedding via iframe is permitted. Defaults to True.
+    embed_enabled = Column(Boolean, nullable=False, default=True, server_default=text("true"))
+    # Persisted Cloudinary processing status, written by webhook to avoid polling Cloudinary
+    processing_status = Column(
+        String, nullable=False, default="ready", server_default=text("'ready'")
+    )
+    processing_progress = Column(
+        Integer, nullable=False, default=100, server_default=text("100")
+    )
     created_at = Column(DateTime, nullable=False, server_default=text("now()"))
     updated_at = Column(DateTime, nullable=False, server_default=text("now()"))
 
     user = relationship("User", back_populates="videos")
+    comments = relationship(
+        "Comment", back_populates="video", cascade="all, delete-orphan"
+    )
+
+
+class Comment(Base):
+    """
+    A comment on a video. Supports optional timestamp_seconds so users can
+    anchor their comment to a specific moment in the recording.
+    """
+    __tablename__ = "video_comments"
+
+    id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        unique=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    video_pk = Column(
+        UUID(as_uuid=True),
+        ForeignKey("videos.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id = Column(
+        String, ForeignKey("user.id", ondelete="CASCADE"), nullable=False
+    )
+    body = Column(Text, nullable=False)
+    # Seconds offset into the video, or NULL for a general comment
+    timestamp_seconds = Column(Integer, nullable=True)
+    created_at = Column(DateTime, nullable=False, server_default=text("now()"))
+    updated_at = Column(DateTime, nullable=False, server_default=text("now()"))
+
+    video = relationship("Video", back_populates="comments")
+    user = relationship("User")
