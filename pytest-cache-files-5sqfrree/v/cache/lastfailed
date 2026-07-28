@@ -1,0 +1,7 @@
+{
+  "tests/test_new_features.py::test_comments_list_404_for_unknown_video": true,
+  "tests/test_videos.py::test_get_all_videos_unauthenticated": true,
+  "tests/test_videos.py::test_get_video_not_found": true,
+  "tests/test_videos.py::test_upload_url_with_auth": true,
+  "tests/test_new_features.py::test_comments_create_validates_body": true
+}
