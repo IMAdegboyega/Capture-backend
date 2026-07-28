@@ -10,6 +10,12 @@ __pycache__/
 *.py[cod]
 *.pyo
 
+# Test / coverage caches
+.pytest_cache/
+pytest-cache-files-*/
+.coverage
+htmlcov/
+
 # Alembic
 # Migration version files are intentionally committed so Render can run them
 !migrations/versions/*.py
